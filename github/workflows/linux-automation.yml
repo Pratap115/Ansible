@@ -1,0 +1,77 @@
+name: Ansible Linux Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target inventory
+        type: choice
+        options: [dev, prod]
+        default: dev
+      operation:
+        description: Operation to run
+        type: choice
+        options: [configure, health-check]
+        default: configure
+  push:
+    branches: [main]
+    paths:
+      - '01-enterprise-linux-automation/**'
+      - '.github/workflows/linux-automation.yml'
+
+# Workflow is stored at repository root; commands execute in this project folder.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    defaults:
+      run:
+        working-directory: 01-enterprise-linux-automation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible ansible-lint
+      - run: ansible-galaxy collection install -r requirements.yml
+      - run: ansible-playbook playbooks/site.yml --syntax-check
+      - run: ansible-lint playbooks roles
+
+  deploy:
+    defaults:
+      run:
+        working-directory: 01-enterprise-linux-automation
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible
+      - run: ansible-galaxy collection install -r requirements.yml
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Run Ansible
+        env:
+          ANSIBLE_USER: ${{ secrets.ANSIBLE_USER }}
+          PROD_APP01_HOST: ${{ secrets.PROD_APP01_HOST }}
+        run: |
+          INVENTORY="inventory/${{ inputs.environment }}.yml"
+          if [ "${{ inputs.operation }}" = "health-check" ]; then
+            ansible-playbook -i "$INVENTORY" playbooks/health-check.yml
+          else
+            ansible-playbook -i "$INVENTORY" playbooks/site.yml
+          fi

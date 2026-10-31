@@ -1,0 +1,133 @@
+name: Provision and Configure Azure VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Select whether to provision/configure or remove the dedicated lab VM resources
+        type: choice
+        options:
+          - provision
+          - destroy
+        default: provision
+        required: true
+      confirm_destroy:
+        description: Type DELETE_AZURE_VM_RESOURCES only when intentionally deleting the lab VM and networking resources
+        type: string
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - '06-azure-vm-provisioning-automation/**'
+      - '.github/workflows/azure-vm-automation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 06-azure-vm-provisioning-automation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible and lint tools
+        run: pip install ansible ansible-lint
+      - name: Install Azure collection and Python dependencies
+        run: |
+          ansible-galaxy collection install -r requirements.yml
+          python -m pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
+      - name: Syntax check playbooks
+        run: |
+          ansible-playbook playbooks/provision-vm.yml --syntax-check
+          ansible-playbook playbooks/configure-vm.yml --syntax-check
+          ansible-playbook playbooks/destroy.yml --syntax-check
+      - name: Lint playbooks
+        run: ansible-lint playbooks
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: 06-azure-vm-provisioning-automation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible and Azure collection dependencies
+        run: |
+          pip install ansible
+          ansible-galaxy collection install -r requirements.yml
+          python -m pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
+      - name: Authenticate to Azure using GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Configure SSH identity
+        if: inputs.operation == 'provision'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AZURE_VM_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Detect this runner's public egress IP
+        id: runner_ip
+        if: inputs.operation == 'provision'
+        run: echo "cidr=$(curl -fsS https://api.ipify.org)/32" >> "$GITHUB_OUTPUT"
+      - name: Provision Azure infrastructure
+        if: inputs.operation == 'provision'
+        env:
+          AZURE_SSH_PUBLIC_KEY: ${{ vars.AZURE_SSH_PUBLIC_KEY }}
+          AZURE_ALLOWED_SSH_CIDR: ${{ steps.runner_ip.outputs.cidr }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_VM_NAME: ${{ vars.AZURE_VM_NAME }}
+          AZURE_VM_SIZE: ${{ vars.AZURE_VM_SIZE }}
+          AZURE_ADMIN_USERNAME: ${{ vars.AZURE_ADMIN_USERNAME }}
+        run: ansible-playbook playbooks/provision-vm.yml
+      - name: Configure VM SSH known_hosts and apply baseline
+        if: inputs.operation == 'provision'
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_VM_NAME: ${{ vars.AZURE_VM_NAME }}
+          AZURE_ADMIN_USERNAME: ${{ vars.AZURE_ADMIN_USERNAME }}
+        run: |
+          RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-ansible-vm-lab}"
+          VM_NAME="${AZURE_VM_NAME:-ansible-ubuntu-vm}"
+          ADMIN_USER="${AZURE_ADMIN_USERNAME:-ansibleadmin}"
+          VM_IP=$(az vm show --show-details --resource-group "$RESOURCE_GROUP" --name "$VM_NAME" --query publicIps --output tsv)
+          test -n "$VM_IP"
+          for attempt in $(seq 1 30); do
+            if ssh-keyscan -H "$VM_IP" >> ~/.ssh/known_hosts 2>/dev/null; then break; fi
+            sleep 10
+          done
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ansible-playbook -i "${VM_IP}," -u "$ADMIN_USER" --private-key ~/.ssh/id_ed25519 playbooks/configure-vm.yml
+      - name: Remove dedicated Azure VM resources
+        if: inputs.operation == 'destroy'
+        env:
+          CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_VM_NAME: ${{ vars.AZURE_VM_NAME }}
+        run: |
+          if [ "$CONFIRM_DESTROY" != "DELETE_AZURE_VM_RESOURCES" ]; then
+            echo "Destruction not confirmed. Enter DELETE_AZURE_VM_RESOURCES in the workflow input."
+            exit 1
+          fi
+          RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-ansible-vm-lab}"
+          ansible-playbook playbooks/destroy.yml -e "azure_resource_group=$RESOURCE_GROUP" -e "confirm_destroy=$CONFIRM_DESTROY"

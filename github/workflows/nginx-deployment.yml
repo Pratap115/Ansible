@@ -1,0 +1,52 @@
+name: Deploy Nginx
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['03-nginx-webserver-automation/**', '.github/workflows/nginx-deployment.yml']
+
+# Workflow is stored at repository root; commands execute in this project folder.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    defaults:
+      run:
+        working-directory: 03-nginx-webserver-automation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible ansible-lint
+      - run: ansible-playbook playbooks/deploy.yml --syntax-check
+      - run: ansible-lint playbooks roles
+
+  deploy:
+    defaults:
+      run:
+        working-directory: 03-nginx-webserver-automation
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - run: ansible-playbook -i inventory/dev.yml playbooks/deploy.yml
