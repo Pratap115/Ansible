@@ -1,0 +1,54 @@
+---
+- name: Remove only the Ansible lab VM and its networking resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require explicit destructive confirmation
+      ansible.builtin.assert:
+        that:
+          - confirm_destroy | default('') == 'DELETE_AZURE_VM_RESOURCES'
+        fail_msg: "Refusing to delete Azure resources. Set confirm_destroy=DELETE_AZURE_VM_RESOURCES to proceed."
+
+    - name: Delete the virtual machine
+      azure.azcollection.azure_rm_virtualmachine:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_vm_name }}"
+        state: absent
+
+    - name: Delete the network interface
+      azure.azcollection.azure_rm_networkinterface:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nic_name }}"
+        state: absent
+
+    - name: Delete the public IP address
+      azure.azcollection.azure_rm_publicipaddress:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_public_ip_name }}"
+        state: absent
+
+    - name: Delete the subnet
+      azure.azcollection.azure_rm_subnet:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        virtual_network_name: "{{ azure_vnet_name }}"
+        name: "{{ azure_subnet_name }}"
+        state: absent
+
+    - name: Delete the network security group
+      azure.azcollection.azure_rm_securitygroup:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nsg_name }}"
+        state: absent
+
+    - name: Delete the virtual network
+      azure.azcollection.azure_rm_virtualnetwork:
+        auth_source: cli
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_vnet_name }}"
+        state: absent

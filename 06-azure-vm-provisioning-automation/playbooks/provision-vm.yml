@@ -1,0 +1,122 @@
+---
+- name: Provision Azure network and Ubuntu virtual machine
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    azure_auth_source: cli
+  tasks:
+    - name: Validate required deployment inputs
+      ansible.builtin.assert:
+        that:
+          - azure_ssh_public_key | length > 40
+          - azure_allowed_ssh_cidr is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$')
+          - azure_admin_username | length >= 3
+        fail_msg: >-
+          Set AZURE_SSH_PUBLIC_KEY to the matching SSH public key and
+          The workflow supplies the current runner egress IP as a /32 for the NSG rule.
+
+    - name: Create virtual network
+      azure.azcollection.azure_rm_virtualnetwork:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_vnet_name }}"
+        address_prefixes_cidr:
+          - "{{ azure_vnet_cidr }}"
+        location: "{{ azure_location }}"
+        state: present
+
+    - name: Create network security group with restricted SSH ingress
+      azure.azcollection.azure_rm_securitygroup:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nsg_name }}"
+        location: "{{ azure_location }}"
+        purge_rules: true
+        rules:
+          - name: Allow-SSH-From-Approved-IP
+            protocol: Tcp
+            source_address_prefix: "{{ azure_allowed_ssh_cidr }}"
+            source_port_range: "*"
+            destination_address_prefix: "*"
+            destination_port_range: "22"
+            access: Allow
+            priority: 110
+            direction: Inbound
+        tags: "{{ azure_resource_tags }}"
+        state: present
+
+    - name: Create subnet and associate network security group
+      azure.azcollection.azure_rm_subnet:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        virtual_network_name: "{{ azure_vnet_name }}"
+        name: "{{ azure_subnet_name }}"
+        address_prefix_cidr: "{{ azure_subnet_cidr }}"
+        security_group: "{{ azure_nsg_name }}"
+        state: present
+
+    - name: Create static public IP address
+      azure.azcollection.azure_rm_publicipaddress:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_public_ip_name }}"
+        location: "{{ azure_location }}"
+        allocation_method: Static
+        sku: Standard
+        state: present
+        tags: "{{ azure_resource_tags }}"
+
+    - name: Create network interface
+      azure.azcollection.azure_rm_networkinterface:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nic_name }}"
+        location: "{{ azure_location }}"
+        virtual_network: "{{ azure_vnet_name }}"
+        subnet_name: "{{ azure_subnet_name }}"
+        ip_configurations:
+          - name: primary
+            primary: true
+            private_ip_allocation_method: Dynamic
+            public_ip_address_name: "{{ azure_public_ip_name }}"
+        state: present
+        tags: "{{ azure_resource_tags }}"
+
+    - name: Create Ubuntu 22.04 virtual machine
+      azure.azcollection.azure_rm_virtualmachine:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_vm_name }}"
+        location: "{{ azure_location }}"
+        vm_size: "{{ azure_vm_size }}"
+        admin_username: "{{ azure_admin_username }}"
+        ssh_password_enabled: false
+        ssh_public_keys:
+          - path: "/home/{{ azure_admin_username }}/.ssh/authorized_keys"
+            key_data: "{{ azure_ssh_public_key }}"
+        linux_config:
+          disable_password_authentication: true
+        network_interface_names:
+          - "{{ azure_nic_name }}"
+        image: "{{ azure_image }}"
+        managed_disk_type: "{{ azure_os_disk_type }}"
+        os_disk_name: "{{ azure_vm_name }}-osdisk"
+        started: true
+        state: present
+        tags: "{{ azure_resource_tags }}"
+
+    - name: Read the allocated public IP
+      azure.azcollection.azure_rm_publicipaddress_info:
+        auth_source: "{{ azure_auth_source }}"
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_public_ip_name }}"
+      register: azure_pip_info
+
+    - name: Display VM connection details
+      ansible.builtin.debug:
+        msg:
+          - "VM: {{ azure_vm_name }}"
+          - "Public IP: {{ azure_pip_info.publicipaddresses[0].ip_address | default('Check Azure Portal') }}"
+          - "SSH user: {{ azure_admin_username }}"
+          - "SSH is restricted to {{ azure_allowed_ssh_cidr }}"

@@ -1,0 +1,63 @@
+---
+- name: Configure the provisioned Azure Ubuntu VM
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait for SSH and cloud-init to finish
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+        sleep: 10
+
+    - name: Gather VM facts
+      ansible.builtin.setup:
+
+    - name: Confirm supported operating system
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_major_version == "22"
+        fail_msg: "This configuration playbook currently targets Ubuntu 22.04."
+
+    - name: Refresh apt package metadata
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install baseline administration packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - jq
+          - unzip
+          - htop
+          - net-tools
+          - chrony
+        state: present
+
+    - name: Ensure chrony service is enabled and running
+      ansible.builtin.service:
+        name: chrony
+        enabled: true
+        state: started
+
+    - name: Ensure SSH service is enabled and running
+      ansible.builtin.service:
+        name: ssh
+        enabled: true
+        state: started
+
+    - name: Collect filesystem usage
+      ansible.builtin.command: df -h /
+      register: root_filesystem
+      changed_when: false
+
+    - name: Display VM configuration summary
+      ansible.builtin.debug:
+        msg:
+          - "Hostname: {{ ansible_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Kernel: {{ ansible_kernel }}"
+          - "Root filesystem: {{ root_filesystem.stdout_lines | last }}"

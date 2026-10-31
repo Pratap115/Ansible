@@ -1,0 +1,29 @@
+---
+# Azure resource names and sizing can be overridden with GitHub Actions variables.
+azure_location: "{{ lookup('env', 'AZURE_LOCATION') | default('centralindia', true) }}"
+azure_resource_group: "{{ lookup('env', 'AZURE_RESOURCE_GROUP') | default('rg-ansible-vm-lab', true) }}"
+azure_vm_name: "{{ lookup('env', 'AZURE_VM_NAME') | default('ansible-ubuntu-vm', true) }}"
+azure_vm_size: "{{ lookup('env', 'AZURE_VM_SIZE') | default('Standard_B2s', true) }}"
+azure_admin_username: "{{ lookup('env', 'AZURE_ADMIN_USERNAME') | default('ansibleadmin', true) }}"
+azure_ssh_public_key: "{{ lookup('env', 'AZURE_SSH_PUBLIC_KEY') }}"
+azure_allowed_ssh_cidr: "{{ lookup('env', 'AZURE_ALLOWED_SSH_CIDR') }}"
+
+azure_vnet_name: "{{ azure_vm_name }}-vnet"
+azure_subnet_name: "{{ azure_vm_name }}-subnet"
+azure_nsg_name: "{{ azure_vm_name }}-nsg"
+azure_public_ip_name: "{{ azure_vm_name }}-pip"
+azure_nic_name: "{{ azure_vm_name }}-nic"
+
+azure_vnet_cidr: "10.40.0.0/16"
+azure_subnet_cidr: "10.40.1.0/24"
+azure_os_disk_type: "StandardSSD_LRS"
+azure_image:
+  publisher: Canonical
+  offer: 0001-com-ubuntu-server-jammy
+  sku: 22_04-lts-gen2
+  version: latest
+
+azure_resource_tags:
+  project: ansible-automation-portfolio
+  environment: dev
+  managed_by: ansible
