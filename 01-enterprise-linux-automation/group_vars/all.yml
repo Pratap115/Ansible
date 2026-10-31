@@ -1,0 +1,17 @@
+---
+admin_users:
+  - name: devops
+    groups: [sudo]
+  - name: automation
+    groups: [sudo]
+
+common_packages:
+  - curl
+  - wget
+  - vim
+  - git
+  - unzip
+  - htop
+
+# Keep patching disabled by default. Enable deliberately during a maintenance window.
+enable_os_patching: false

@@ -1,0 +1,19 @@
+---
+- name: Install Docker engine on Ubuntu
+  ansible.builtin.apt:
+    name: [docker.io, docker-compose-v2]
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Install Docker engine on Red Hat family
+  ansible.builtin.dnf:
+    name: [docker, docker-compose-plugin]
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Ensure Docker is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true

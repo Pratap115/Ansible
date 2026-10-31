@@ -1,0 +1,9 @@
+---
+all:
+  children:
+    linux:
+      hosts:
+        app01:
+          ansible_host: 192.0.2.10
+      vars:
+        ansible_user: "{{ lookup('env', 'ANSIBLE_USER') | default('ubuntu', true) }}"

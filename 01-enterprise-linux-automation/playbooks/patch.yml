@@ -1,0 +1,25 @@
+---
+- name: Apply operating-system updates during an approved maintenance window
+  hosts: linux
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require explicit patching approval
+      ansible.builtin.assert:
+        that:
+          - enable_os_patching | bool
+        fail_msg: "Set enable_os_patching=true in group_vars/all.yml after approving a maintenance window."
+
+    - name: Update packages on Debian-family systems
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Update packages on Red Hat-family systems
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+      when: ansible_os_family == "RedHat"

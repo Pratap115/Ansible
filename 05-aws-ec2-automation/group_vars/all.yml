@@ -1,0 +1,6 @@
+---
+ansible_user: ubuntu
+aws_managed_packages:
+  - curl
+  - wget
+  - unzip

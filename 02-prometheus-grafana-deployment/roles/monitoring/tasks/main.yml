@@ -1,0 +1,37 @@
+---
+- name: Validate Grafana password is provided
+  ansible.builtin.assert:
+    that:
+      - grafana_admin_password | length >= 12
+    fail_msg: "Set GRAFANA_ADMIN_PASSWORD to a strong value (at least 12 characters) in GitHub Actions secrets."
+
+- name: Create monitoring configuration directory
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/prometheus"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Docker Compose stack
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ monitoring_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Start monitoring stack
+  ansible.builtin.command:
+    cmd: docker compose -f compose.yml up -d
+    chdir: "{{ monitoring_dir }}"
+  register: compose_result
+  changed_when: "'Started' in compose_result.stdout or 'Created' in compose_result.stdout or 'Pulled' in compose_result.stderr"

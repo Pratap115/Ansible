@@ -1,0 +1,2 @@
+---
+nginx_site_path: "{{ '/etc/nginx/sites-available/portfolio' if ansible_os_family == 'Debian' else '/etc/nginx/conf.d/portfolio.conf' }}"

@@ -1,0 +1,12 @@
+---
+- name: Install common packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Ensure time synchronization service is enabled where available
+  ansible.builtin.service:
+    name: "{{ 'chronyd' if ansible_os_family == 'RedHat' else 'systemd-timesyncd' }}"
+    state: started
+    enabled: true
+  failed_when: false

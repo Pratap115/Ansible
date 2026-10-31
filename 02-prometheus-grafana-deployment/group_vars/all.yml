@@ -1,0 +1,5 @@
+---
+monitoring_dir: /opt/monitoring
+grafana_admin_user: admin
+# Supply this through GitHub secret GRAFANA_ADMIN_PASSWORD; do not commit a real password.
+grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') }}"

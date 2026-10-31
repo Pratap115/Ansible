@@ -1,0 +1,14 @@
+---
+- name: Ensure SSH daemon is enabled and running
+  ansible.builtin.service:
+    name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
+    state: started
+    enabled: true
+
+- name: Ensure core dump storage is restricted
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-core-dumps.conf
+    content: "* hard core 0\n"
+    owner: root
+    group: root
+    mode: "0644"

@@ -1,0 +1,9 @@
+---
+- name: Configure enterprise Linux servers
+  hosts: linux
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - users
+    - security_baseline

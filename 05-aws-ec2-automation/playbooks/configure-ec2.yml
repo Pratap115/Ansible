@@ -1,0 +1,32 @@
+---
+- name: Configure tagged EC2 instances
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Install baseline packages on Ubuntu
+      ansible.builtin.apt:
+        name: "{{ aws_managed_packages }}"
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Install baseline packages on Red Hat family
+      ansible.builtin.dnf:
+        name: "{{ aws_managed_packages }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Ensure SSM agent service is running when installed
+      ansible.builtin.service:
+        name: amazon-ssm-agent
+        state: started
+        enabled: true
+      failed_when: false
+
+    - name: Report instance facts
+      ansible.builtin.debug:
+        msg:
+          - "Instance inventory name: {{ inventory_hostname }}"
+          - "Private IP: {{ ansible_default_ipv4.address | default('unknown') }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"

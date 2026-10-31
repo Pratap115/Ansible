@@ -1,0 +1,7 @@
+---
+- name: Deploy Prometheus, Grafana and Node Exporter
+  hosts: all
+  become: true
+  roles:
+    - docker
+    - monitoring

@@ -1,0 +1,9 @@
+---
+all:
+  children:
+    linux:
+      hosts:
+        prod-app01:
+          ansible_host: "{{ lookup('env', 'PROD_APP01_HOST') }}"
+      vars:
+        ansible_user: "{{ lookup('env', 'ANSIBLE_USER') | default('ubuntu', true) }}"

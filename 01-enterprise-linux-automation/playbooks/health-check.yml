@@ -1,0 +1,23 @@
+---
+- name: Collect basic Linux health information
+  hosts: linux
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read root filesystem usage
+      ansible.builtin.command: df -P /
+      register: root_df
+      changed_when: false
+
+    - name: Read memory information
+      ansible.builtin.command: free -h
+      register: memory
+      changed_when: false
+
+    - name: Display health summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "{{ root_df.stdout }}"
+          - "{{ memory.stdout }}"

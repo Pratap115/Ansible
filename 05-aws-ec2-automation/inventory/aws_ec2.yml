@@ -1,0 +1,16 @@
+---
+plugin: amazon.aws.aws_ec2
+regions:
+  - "{{ lookup('env', 'AWS_REGION') | default('ap-south-1', true) }}"
+filters:
+  instance-state-name: running
+  tag:AnsibleManaged: "true"
+hostnames:
+  - public-ip-address
+compose:
+  ansible_host: public_ip_address
+keyed_groups:
+  - key: tags.Environment
+    prefix: env
+  - key: tags.Role
+    prefix: role

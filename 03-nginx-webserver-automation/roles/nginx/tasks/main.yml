@@ -1,0 +1,57 @@
+---
+- name: Install Nginx
+  ansible.builtin.package:
+    name: nginx
+    state: present
+
+- name: Create web root
+  ansible.builtin.file:
+    path: "{{ web_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+  when: ansible_os_family == "Debian"
+
+- name: Create web root on Red Hat family
+  ansible.builtin.file:
+    path: "{{ web_root }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: "0755"
+  when: ansible_os_family == "RedHat"
+
+- name: Deploy sample landing page
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: "{{ web_root }}/index.html"
+    mode: "0644"
+
+- name: Deploy Nginx site configuration
+  ansible.builtin.template:
+    src: portfolio.conf.j2
+    dest: "{{ nginx_site_path }}"
+    mode: "0644"
+  notify: Validate and reload nginx
+
+- name: Disable the default Debian Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: ansible_os_family == "Debian"
+  notify: Validate and reload nginx
+
+- name: Enable the portfolio site on Debian
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/portfolio
+    dest: /etc/nginx/sites-enabled/portfolio
+    state: link
+  when: ansible_os_family == "Debian"
+  notify: Validate and reload nginx
+
+- name: Enable and start Nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

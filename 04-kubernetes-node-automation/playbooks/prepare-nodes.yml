@@ -1,0 +1,6 @@
+---
+- name: Prepare Linux hosts for a Kubernetes installation
+  hosts: kubernetes_nodes
+  become: true
+  roles:
+    - node_prerequisites

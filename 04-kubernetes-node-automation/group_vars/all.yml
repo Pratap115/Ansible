@@ -1,0 +1,5 @@
+---
+containerd_package_name: containerd
+kubernetes_kernel_modules:
+  - overlay
+  - br_netfilter
