@@ -1,0 +1,61 @@
+name: Configure AWS EC2 with Ansible
+
+on:
+  workflow_dispatch:
+
+# Workflow is stored at repository root; commands execute in this project folder.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    defaults:
+      run:
+        working-directory: 05-aws-ec2-automation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible ansible-lint
+      - run: ansible-galaxy collection install -r requirements.yml
+      - run: ansible-playbook playbooks/configure-ec2.yml --syntax-check
+      - run: ansible-lint playbooks
+
+  deploy:
+    defaults:
+      run:
+        working-directory: 05-aws-ec2-automation
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: aws-dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ansible
+      - run: ansible-galaxy collection install -r requirements.yml
+      - name: Configure AWS credentials using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.EC2_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Discover and configure tagged EC2 instances
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          ansible-inventory -i inventory/aws_ec2.yml --graph
+          ansible-playbook -i inventory/aws_ec2.yml playbooks/configure-ec2.yml
